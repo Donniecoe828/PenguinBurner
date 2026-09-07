@@ -12,6 +12,9 @@ from pathlib import Path
 
 import pytest
 
+# Plain constants module: no Qt import, so it is safe to read here.
+from ui.constants import APP_DISPLAY_NAME
+
 
 def test_base_package_installs_gui_dependencies() -> None:
     metadata = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
@@ -1033,16 +1036,32 @@ def test_package_installs_auto_uv_subpackages_and_initial_check() -> None:
     assert "    stability \\" in rpm_spec
 
 
-def test_desktop_launcher_is_english_only_nvidia_gpu_tool() -> None:
+def test_desktop_launchers_are_english_only_and_consistent() -> None:
     desktop_text = Path(
         "packaging/linux/io.github.jpietek.PenguinBurner.desktop"
     ).read_text(encoding="utf-8")
+    flatpak_desktop_text = Path(
+        "packaging/flatpak/io.github.jpietek.PenguinBurner.desktop"
+    ).read_text(encoding="utf-8")
 
-    assert "Name=NVIDIA GPU Automatic Tuning Tool" in desktop_text
-    assert "GenericName=NVIDIA GPU Automatic Tuning Tool" in desktop_text
-    assert "automatic and adaptive undervolting" in desktop_text
-    assert "MSI Afterburner imports" in desktop_text
-    assert "LACT exports" in desktop_text
+    # Name is the application name and GenericName the category, per the
+    # freedesktop entry spec; the menu still finds the app by "NVIDIA"/"GPU"
+    # through GenericName and Keywords.
+    for text in (desktop_text, flatpak_desktop_text):
+        assert "Name=PenguinBurner" in text
+        assert "GenericName=NVIDIA GPU Tuning Tool" in text
+        assert "Automatic NVIDIA GPU undervolting and overclocking" in text
+        assert "adaptive per-game profiles for Steam and Lutris" in text
+        assert "Steam;Lutris;" in text
+    # A native install and a Flatpak install must show the same app name.
+    def entry_lines(text: str, field: str) -> list[str]:
+        return [line for line in text.splitlines() if line.startswith(f"{field}=")]
+
+    for field in ("Name", "GenericName", "Comment", "Keywords"):
+        assert entry_lines(desktop_text, field) == entry_lines(
+            flatpak_desktop_text, field
+        ), field
+    assert APP_DISPLAY_NAME == "PenguinBurner"
     assert "Exec=penguin-burner" in desktop_text
     assert "Icon=penguin-burner" in desktop_text
     assert "Penguin Burner" in desktop_text
@@ -1050,6 +1069,64 @@ def test_desktop_launcher_is_english_only_nvidia_gpu_tool() -> None:
     assert "StartupWMClass=io.github.jpietek.PenguinBurner" in desktop_text
     assert "Name[" not in desktop_text
     assert "Comment[" not in desktop_text
+
+
+def test_pypi_summary_matches_readme_positioning() -> None:
+    # The PyPI long description is generated from README.md at build time, so
+    # the one-line summary is the only project blurb that can drift from it.
+    metadata = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    summary = metadata["project"]["description"]
+    keywords = set(metadata["project"]["keywords"])
+    readme = Path("README.md").read_text(encoding="utf-8")
+
+    assert summary.startswith(
+        "Automatic NVIDIA GPU undervolting, overclocking, and per-game tuning"
+    )
+    assert "three verified tiers" in summary
+    assert "Steam and Lutris" in summary
+    assert "PC latency" in summary
+    assert "Steam and Lutris" in readme
+    assert {"overclocking", "adaptive", "steam", "lutris", "overlay"} <= keywords
+
+
+def test_native_package_descriptions_cover_readme_headline_features() -> None:
+    # COPR (rpm), the Ubuntu PPA (deb), the AUR/CachyOS PKGBUILD and the Flatpak
+    # AppStream data each carry their own hand-written blurb: unlike the PyPI
+    # long description, none is generated from README.md, so they drift
+    # silently.
+    rpm_spec = Path("packaging/rpm/penguin-burner.spec").read_text(encoding="utf-8")
+    debian_control = Path("packaging/debian/control").read_text(encoding="utf-8")
+    arch_pkgbuild = Path("packaging/arch/PKGBUILD").read_text(encoding="utf-8")
+    metainfo = Path(
+        "packaging/flatpak/io.github.jpietek.PenguinBurner.metainfo.xml"
+    ).read_text(encoding="utf-8")
+
+    short_summary = "NVIDIA GPU undervolting, overclocking"
+    assert f"Summary:        Automatic {short_summary}, and per-game tuning" in rpm_spec
+    assert f"Description: automatic {short_summary} and per-game tuning" in debian_control
+    assert (
+        f"<summary>Automatic {short_summary} and per-game tuning</summary>" in metainfo
+    )
+    # pacman has no long-description field, so pkgdesc is the whole AUR blurb;
+    # namcap wants it under 80 characters.
+    pkgdesc = arch_pkgbuild.split("pkgdesc='", 1)[1].split("'", 1)[0]
+    assert pkgdesc == f"Automatic {short_summary} and adaptive per-game tuning"
+    assert len(pkgdesc) < 80
+
+    for blurb in (rpm_spec, debian_control, metainfo):
+        # Both formats hard-wrap their body, so match on unwrapped prose.
+        prose = " ".join(blurb.split())
+        assert "Auto-UV scan" in prose
+        assert "Efficiency, Balanced and Performance" in prose.replace(
+            "Efficiency, Balanced, and Performance", "Efficiency, Balanced and Performance"
+        )
+        assert "Adaptive undervolting" in prose
+        assert "Steam and Lutris games into one list" in prose
+        assert "frame-generation FPS" in prose
+        assert "PC latency" in prose
+        assert "MSI Afterburner profile import" in prose
+        assert "LACT config export" in prose
+        assert "penguin-burnerd" in prose
 
 
 def test_readme_uses_logo_image_instead_of_emoji_title() -> None:

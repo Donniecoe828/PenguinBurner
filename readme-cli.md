@@ -4,7 +4,10 @@
 
 # PenguinBurner CLI
 
-PenguinBurner is an NVIDIA Auto-UV tuning tool. The default app entrypoints,
+PenguinBurner is an automatic NVIDIA GPU undervolting, overclocking, and
+per-game tuning tool for Linux: one Auto-UV scan saves three verified tiers
+(Efficiency, Balanced, Performance) that the adaptive runtime switches between
+while you play. The default app entrypoints,
 `penguin-burner` and `pburn`, start the Qt GUI. The explicit CLI entrypoints,
 `penguin-burner-cli` and `pburn-cli`, are for Auto-UV scans, profile
 verification, and applying saved Auto-UV profiles as daemon runtime.
