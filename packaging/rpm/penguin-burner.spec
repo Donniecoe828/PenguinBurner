@@ -1,7 +1,7 @@
 Name:           penguin-burner
 Version:        0.8.0
 Release:        1%{?dist}
-Summary:        NVIDIA GPU automatic undervolting and fine tuning tool
+Summary:        Automatic NVIDIA GPU undervolting, overclocking, and per-game tuning
 
 %global debug_package %{nil}
 
@@ -43,15 +43,28 @@ Requires:       bash
 Requires:       systemd
 
 %description
-PenguinBurner is an NVIDIA GPU automatic undervolting tool. It helps you
-visualize and manage your GPU fine tuning setup with single voltage/frequency
-bin precision to maximize FPS per Watt, potentially leading into +33% and higher
-improvements for recent cards. MSI Afterburner imports and LACT exports are
-also supported.
+PenguinBurner tunes NVIDIA GPUs on Linux automatically. One Auto-UV scan
+sweeps the card under a managed headless Q2RTX benchmark plus a CUDA load,
+verifies stability and FPS per watt at single voltage/frequency bin precision,
+and saves three profiles: Efficiency, Balanced, and Performance (undervolt
+plus overclock). On a verified RTX 5080 the Balanced tier held roughly the
+stock loaded clock at 272 W instead of 341 W.
 
-It provides a Qt desktop UI, command-line tools, automatic voltage/frequency
-scanning with Q2RTX/CUDA-backed verification, and optional runtime profile
-service installation.
+ * Adaptive undervolting switches between the saved tiers while you play to
+   hold your frame-rate target, and eases off on frame caps and idle desktops.
+ * The Game Library brings Steam and Lutris games into one list, each with its
+   own GPU profile, adaptive FPS target, and overlay setting, applied at launch
+   and restored on exit.
+ * The in-game Vulkan overlay shows base FPS, frame-generation FPS, PC latency,
+   clocks, power, temperatures, and the active tier.
+ * Manual V/F and fan curve editors, an automatic silent fan curve, MSI
+   Afterburner profile import, and LACT config export.
+ * A Qt desktop UI and a CLI, both driving one root systemd service
+   (penguin-burnerd, a compiled Rust daemon) installed once with a single
+   admin prompt.
+
+Pre-optimized Auto-UV targets are included for RTX 30, 40, and 50 series cards.
+GPU tuning can crash the driver or freeze the system; use it at your own risk.
 
 This package is intended for Fedora systems using the proprietary NVIDIA driver,
 version 580 or newer, from either Fedora's NVIDIA driver repository or RPM

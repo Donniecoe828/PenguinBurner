@@ -24,7 +24,12 @@ def parse_arguments(argv):
     parser = argparse.ArgumentParser(
         prog="penguin_burner.py",
         usage="penguin_burner.py [options]",
-        description=("PenguinBurner Auto-UV scan and runtime profile utility."),
+        description=(
+            "PenguinBurner: automatic NVIDIA GPU undervolting and overclocking.\n"
+            "Run Auto-UV scans, manage the saved Efficiency/Balanced/Performance\n"
+            "profiles, drive the adaptive daemon runtime, and set up the Steam\n"
+            "launch wrapper and in-game overlay."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 

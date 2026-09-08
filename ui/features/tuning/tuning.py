@@ -42,7 +42,10 @@ GPU_UNDERVOLTING_PURPOSE_TEXT = (
     "result can be dead-silent fan operation, lower temperatures, and lower "
     "electricity bills. PenguinBurner automatically searches for the operating "
     "sweet spot of your Nvidia GPU, so you do not have to resort to trial and "
-    "error or risk introducing avoidable system instability."
+    "error or risk introducing avoidable system instability. One scan saves "
+    "three verified tiers — Efficiency, Balanced, and Performance — that "
+    "the adaptive runtime switches between while you play, per game, across "
+    "your Steam and Lutris library."
 )
 
 
