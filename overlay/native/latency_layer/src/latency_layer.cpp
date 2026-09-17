@@ -14,7 +14,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layer_create_instance(
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
-    auto* link = find_layer_link(create_info);
+    auto* link = find_layer_chain_entry(create_info);
     if (!link || !link->u.pLayerInfo || !link->u.pLayerInfo->pfnNextGetInstanceProcAddr) {
         return VK_ERROR_INITIALIZATION_FAILED;
     }
@@ -164,13 +164,22 @@ VKAPI_ATTR VkResult VKAPI_CALL layer_create_device(
         return VK_ERROR_INITIALIZATION_FAILED;
     }
 
-    auto* link = find_layer_link(create_info);
+    auto* link = find_layer_chain_entry(create_info);
     if (!link || !link->u.pLayerInfo || !link->u.pLayerInfo->pfnNextGetDeviceProcAddr) {
         return VK_ERROR_INITIALIZATION_FAILED;
     }
     PFN_vkGetDeviceProcAddr next_get_device_proc_addr =
         link->u.pLayerInfo->pfnNextGetDeviceProcAddr;
     link->u.pLayerInfo = link->u.pLayerInfo->pNext;
+
+    // The overlay allocates its own command buffers, which are dispatchable
+    // objects. The loader requires their loader data to be set before a layer
+    // above us sees them; the callback arrives in its own chain entry.
+    auto* loader_data = find_layer_chain_entry(
+        create_info,
+        VK_LOADER_DATA_CALLBACK);
+    PFN_vkSetDeviceLoaderData set_device_loader_data =
+        loader_data ? loader_data->u.pfnSetDeviceLoaderData : nullptr;
 
     const bool advertised = extension_advertised(
         instance_context,
@@ -208,6 +217,7 @@ VKAPI_ATTR VkResult VKAPI_CALL layer_create_device(
     context.device = *device;
     context.physical_device = physical_device;
     context.get_device_proc_addr = next_get_device_proc_addr;
+    context.set_device_loader_data = set_device_loader_data;
     context.destroy_device = reinterpret_cast<PFN_vkDestroyDevice>(
         next_get_device_proc_addr(*device, "vkDestroyDevice"));
     context.device_wait_idle = reinterpret_cast<PFN_vkDeviceWaitIdle>(
