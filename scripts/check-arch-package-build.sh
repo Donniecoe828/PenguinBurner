@@ -78,10 +78,28 @@ for scenario in "${scenarios[@]}"; do
     image="$(scenario_image "$scenario")"
     echo "==> scenario $scenario ($image)"
     "$ENGINE" run --rm --network "$NETWORK" \
-        -v "$work_dir:/work:ro" \
+        -v "$work_dir:/work:ro,Z" \
         -e SCENARIO="$scenario" \
         "$image" bash -euo pipefail -c '
-        pacman -Syu --noconfirm >/dev/null
+        upgrade=-Syu
+        if [[ "$SCENARIO" == cachyos-shelly ]]; then
+            # A mirror can briefly serve a database and signature from different
+            # updates. Fetch both afresh on retry; never relax signature checks.
+            for attempt in 1 2 3; do
+                if pacman -Syy --noconfirm; then
+                    break
+                fi
+                if [[ "$attempt" == 3 ]]; then
+                    echo "CachyOS database sync failed after $attempt attempts" >&2
+                    exit 1
+                fi
+                echo "Retrying signed CachyOS database sync ($attempt/3)" >&2
+                sleep 5
+            done
+            # Use the databases just verified instead of fetching them again.
+            upgrade=-Su
+        fi
+        pacman "$upgrade" --noconfirm >/dev/null
         pacman -S --noconfirm --needed base-devel cargo cmake python-build \
             python-installer python-setuptools python-wheel \
             vulkan-headers >/dev/null
