@@ -18,19 +18,24 @@ from integrations.steam.cdp import (
     shared_js_context_url,
 )
 
-
 _WS_ACCEPT_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
 class _FakeSteamCdp:
     """Minimal /json + websocket Runtime.evaluate server for tests."""
 
-    def __init__(self, evaluate):
+    def __init__(self, evaluate, *, host="127.0.0.1", http_port=0):
         self._evaluate = evaluate
-        self._ws_server = socket.create_server(("127.0.0.1", 0))
+        family = socket.AF_INET6 if ":" in host else socket.AF_INET
+        self._ws_server = socket.create_server((host, 0), family=family)
         self.ws_port = self._ws_server.getsockname()[1]
+        self.ws_host = f"[{host}]" if family == socket.AF_INET6 else host
         handler = self._json_handler()
-        self._http = http.server.HTTPServer(("127.0.0.1", 0), handler)
+
+        class Server(http.server.HTTPServer):
+            address_family = family
+
+        self._http = Server((host, http_port), handler)
         self.http_port = self._http.server_port
         threading.Thread(target=self._http.serve_forever, daemon=True).start()
         threading.Thread(target=self._serve_ws, daemon=True).start()
@@ -41,6 +46,7 @@ class _FakeSteamCdp:
 
     def _json_handler(self):
         ws_port = self.ws_port
+        ws_host = self.ws_host
 
         class Handler(http.server.BaseHTTPRequestHandler):
             def do_GET(self):
@@ -49,7 +55,7 @@ class _FakeSteamCdp:
                         {"title": "unrelated", "webSocketDebuggerUrl": "ws://x/y"},
                         {
                             "title": "SharedJSContext",
-                            "webSocketDebuggerUrl": f"ws://127.0.0.1:{ws_port}/devtools/page/1",
+                            "webSocketDebuggerUrl": f"ws://{ws_host}:{ws_port}/devtools/page/1",
                         },
                     ]
                 ).encode("utf-8")
@@ -78,6 +84,7 @@ class _FakeSteamCdp:
         while b"\r\n\r\n" not in data:
             data += conn.recv(4096)
         key = ""
+        assert f"\r\nHost: {self.ws_host}:{self.ws_port}\r\n" in data.decode("ascii")
         for line in data.decode("ascii", errors="replace").split("\r\n"):
             if line.lower().startswith("sec-websocket-key:"):
                 key = line.split(":", 1)[1].strip()
@@ -213,6 +220,49 @@ def test_target_discovery_handles_no_endpoint() -> None:
     with socket.create_server(("127.0.0.1", 0)) as placeholder:
         free_port = placeholder.getsockname()[1]
     assert shared_js_context_url(port=free_port, timeout_s=0.2) is None
+
+
+@pytest.mark.parametrize(
+    "ipv4_response", [None, (404, b"not found"), (200, b"[]"), (200, b"invalid json")]
+)
+def test_ipv6_live_connection_with_unavailable_or_unrelated_ipv4(ipv4_response):
+    if not socket.has_ipv6:
+        pytest.skip("IPv6 unavailable")
+
+    class UnrelatedHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            status, body = ipv4_response
+            self.send_response(status)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_args):
+            pass
+
+    unrelated = http.server.HTTPServer(("127.0.0.1", 0), UnrelatedHandler)
+    port = unrelated.server_port
+    if ipv4_response is None:
+        unrelated.server_close()
+    else:
+        threading.Thread(target=unrelated.serve_forever, daemon=True).start()
+    try:
+        steam = _FakeSteamCdp(
+            lambda expression: "steam on IPv6", host="::1", http_port=port
+        )
+        try:
+            assert (
+                shared_js_context_url(port=port)
+                == f"ws://[::1]:{steam.ws_port}/devtools/page/1"
+            )
+            assert shared_js_context_url(host="127.0.0.1", port=port) is None
+            with SteamCdpClient(port=port) as client:
+                assert client.evaluate("read-only probe") == "steam on IPv6"
+        finally:
+            steam.close()
+    finally:
+        if ipv4_response is not None:
+            unrelated.shutdown()
+            unrelated.server_close()
 
 
 def test_read_launch_options_live(fake_steam) -> None:

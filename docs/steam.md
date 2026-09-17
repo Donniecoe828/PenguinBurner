@@ -25,6 +25,10 @@ PenguinBurner can update them:
 | Steam stopped | PenguinBurner can write the saved options directly. |
 | read-only until initialized | Complete the scan or restart requested beside Rescan. |
 
+PenguinBurner detects Steam's live connection on both IPv4 and IPv6 loopback.
+If another local service occupies the IPv4 port, it also checks IPv6 before
+marking Steam read-only.
+
 Mode, target FPS, and overlay visibility can update a running wrapped game.
 Changing **Graphics card** requires a relaunch. Compatibility selection is
 independent of wrapping and is disabled for Steam-confirmed native Linux games

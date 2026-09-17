@@ -15,19 +15,19 @@ read-back; callers fall back to the Steam-stopped localconfig path.
 from __future__ import annotations
 
 import base64
-from collections.abc import Iterable
-from dataclasses import dataclass
 import hashlib
 import http.client
 import json
 import os
-from pathlib import Path
 import socket
 import struct
 import time
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
+from urllib.parse import urlsplit
 
 from .users import default_steam_root
-
 
 CDP_HOST = "127.0.0.1"
 CDP_PORT = 8080
@@ -88,16 +88,27 @@ def ensure_cdp_marker(home: Path | None = None) -> bool:
 
 def shared_js_context_url(
     *,
-    host: str = CDP_HOST,
+    host: str | None = None,
     port: int = CDP_PORT,
     timeout_s: float = 3.0,
 ) -> str | None:
-    """webSocketDebuggerUrl of Steam's shared JS context, or None."""
+    """Find Steam on either loopback family, or only an explicit host."""
+    for candidate in (CDP_HOST, "::1") if host is None else (host,):
+        url = _shared_js_context_at(candidate, port, timeout_s)
+        if url is not None:
+            return url
+    return None
+
+
+def _shared_js_context_at(host: str, port: int, timeout_s: float) -> str | None:
     connection = http.client.HTTPConnection(host, port, timeout=timeout_s)
     try:
         connection.request("GET", "/json")
-        payload = json.loads(connection.getresponse().read().decode("utf-8"))
-    except (OSError, ValueError):
+        response = connection.getresponse()
+        if response.status != 200:
+            return None
+        payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError, http.client.HTTPException):
         return None
     finally:
         connection.close()
@@ -119,16 +130,18 @@ def cdp_available(**kwargs: object) -> bool:
 
 
 def _split_ws_url(url: str) -> tuple[str, int, str]:
-    if not url.startswith("ws://"):
-        raise SteamCdpError(f"unsupported websocket url: {url}")
-    remainder = url[len("ws://") :]
-    authority, slash, path = remainder.partition("/")
-    host, _, port_text = authority.partition(":")
     try:
-        port = int(port_text) if port_text else 80
+        parsed = urlsplit(url)
+        if parsed.scheme != "ws" or not parsed.hostname:
+            raise ValueError("missing websocket host")
+        host = parsed.hostname
+        port = parsed.port if parsed.port is not None else 80
     except ValueError as error:
         raise SteamCdpError(f"unsupported websocket url: {url}") from error
-    return host, port, f"{slash}{path}" or "/"
+    path = parsed.path or "/"
+    if parsed.query:
+        path += f"?{parsed.query}"
+    return host, port, path
 
 
 class _WebSocket:
@@ -142,9 +155,10 @@ class _WebSocket:
         except OSError as error:
             raise SteamCdpError(f"websocket connect failed: {error}") from error
         key = base64.b64encode(os.urandom(16)).decode("ascii")
+        authority = f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
         handshake = (
             f"GET {path} HTTP/1.1\r\n"
-            f"Host: {host}:{port}\r\n"
+            f"Host: {authority}\r\n"
             "Upgrade: websocket\r\n"
             "Connection: Upgrade\r\n"
             f"Sec-WebSocket-Key: {key}\r\n"
@@ -261,7 +275,7 @@ class SteamCdpClient:
     def __init__(
         self,
         *,
-        host: str = CDP_HOST,
+        host: str | None = None,
         port: int = CDP_PORT,
         timeout_s: float = 10.0,
     ) -> None:
