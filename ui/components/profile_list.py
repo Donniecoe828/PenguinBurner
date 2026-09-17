@@ -160,6 +160,8 @@ class ProfileList:
         layout.addLayout(top)
         layout.addWidget(self.table, 1)
         adaptive_note = QtWidgets.QLabel(
+            "Ctrl-click to select multiple profiles, or Shift-click for a range; "
+            "use the trash button or right-click to delete the selection. "
             "Apply changes the current session; tick \"Apply on startup\" to "
             "also save the profile for boot. Restore defaults makes stock "
             "the current and boot state. Per-game adaptive profiles with a "

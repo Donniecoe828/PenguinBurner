@@ -781,7 +781,25 @@ class ProfileActionsMixin:
         index = table.indexAt(position)
         if not index.isValid():
             return
-        table.selectRow(int(index.row()))
+        # Right-clicking inside a batch must not collapse it to one profile.
+        selection = table.selectionModel()
+        if selection is None:
+            return
+        if not selection.isRowSelected(index.row(), index.parent()):
+            flags = self.QtCore.QItemSelectionModel.SelectionFlag
+            selection.select(index, flags.ClearAndSelect | flags.Rows)
+            selection.setCurrentIndex(index, flags.NoUpdate)
+        selected_count = len(self.profile_list.selected_profile_ids())
+        if selected_count > 1:
+            menu = self.QtWidgets.QMenu(table)
+            delete_action = menu.addAction(f"Delete {selected_count} selected profiles")
+            delete_action.setEnabled(
+                not self._workflow_running() and self.profile_list.delete_button.isEnabled()
+            )
+            chosen = menu.exec(table.viewport().mapToGlobal(position))
+            if chosen == delete_action:
+                self._delete_selected_profiles()
+            return
         profile = self._profile_from_row(int(index.row()))
         if profile is None:
             return

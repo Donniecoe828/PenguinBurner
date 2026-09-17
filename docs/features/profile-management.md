@@ -43,6 +43,11 @@ Right-click a profile:
 | Assign Tier | Set Efficiency, Balanced, Performance, or None. |
 | Delete | Remove the profile. |
 
+To delete several profiles together, **Ctrl-click** individual rows or
+**Shift-click** to select a range. Click the trash button, or right-click any
+selected row and choose **Delete N selected profiles**. One confirmation covers
+the whole selection. Right-clicking an unselected row selects only that profile.
+
 Hardware writes use the root daemon; verification runs as your regular user.
 
 ## LACT export

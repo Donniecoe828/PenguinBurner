@@ -320,6 +320,104 @@ def test_delete_selected_profiles(win) -> None:
     window._delete_selected_profiles()
 
 
+@pytest.mark.parametrize("range_selection", [False, True])
+@pytest.mark.parametrize("confirm", [False, True])
+def test_profile_context_menu_deletes_the_mouse_selected_batch(
+    win, qapp, range_selection, confirm
+) -> None:
+    from PySide6 import QtCore, QtTest
+
+    window, monkeypatch = win
+    profiles = [
+        {**PROFILE, "profile_id": f"p{i}", "path": f"/tmp/p{i}.json"}
+        for i in range(3)
+    ]
+    window.profile_summaries = profiles
+    window.profile_list.set_profiles(profiles)
+    window.profile_list.set_runtime_actions_enabled(True)
+    window.tabs.setCurrentIndex(window.profiles_tab_index)
+    window.window.show()
+    qapp.processEvents()
+    table = window.profile_list.table
+    first = table.visualItemRect(table.item(0, 0)).center()
+    second = table.visualItemRect(table.item(1, 0)).center()
+    QtTest.QTest.mouseClick(table.viewport(), QtCore.Qt.LeftButton, pos=first)
+    QtTest.QTest.mouseClick(
+        table.viewport(), QtCore.Qt.LeftButton,
+        QtCore.Qt.ShiftModifier if range_selection else QtCore.Qt.ControlModifier,
+        second,
+    )
+    selected_paths = window.profile_list.selected_profile_paths()
+    assert len(selected_paths) == 2
+    assert not window.profile_list.daemonize_button.isEnabled()
+    assert window.profile_list.delete_button.isEnabled()
+
+    def choose_delete(menu, _position):
+        assert window.profile_list.selected_profile_paths() == selected_paths
+        assert [action.text() for action in menu.actions()] == ["Delete 2 selected profiles"]
+        assert menu.actions()[0].isEnabled()
+        return menu.actions()[0]
+
+    confirmations = []
+
+    def answer(_parent, _title, text, _buttons, _default):
+        confirmations.append(text)
+        buttons = window.QtWidgets.QMessageBox.StandardButton
+        return buttons.Yes if confirm else buttons.No
+
+    deleted = []
+    class Menu(window.QtWidgets.QMenu):
+        def exec(self, position):
+            return choose_delete(self, position)
+
+    monkeypatch.setattr(window.QtWidgets, "QMenu", Menu)
+    monkeypatch.setattr(window.QtWidgets.QMessageBox, "question", answer)
+    monkeypatch.setattr(actions_mod, "penguin_burner_runtime_is_active", lambda: False)
+    monkeypatch.setattr(
+        actions_mod, "delete_auto_uv_profile_paths",
+        lambda paths: deleted.extend(paths) or list(paths),
+    )
+    monkeypatch.setattr(window, "_load_profiles", lambda: None)
+    monkeypatch.setattr(window, "_run_delete_autostart_followup", lambda **_: None)
+
+    window._show_profile_context_menu(first)
+
+    assert len(confirmations) == 1
+    assert "2 selected profiles" in confirmations[0]
+    assert deleted == (selected_paths if confirm else [])
+
+
+def test_profile_context_menu_outside_batch_selects_only_clicked_row(win, qapp) -> None:
+    window, monkeypatch = win
+    profiles = [
+        {**PROFILE, "profile_id": f"p{i}", "path": f"/tmp/p{i}.json"}
+        for i in range(3)
+    ]
+    window.profile_summaries = profiles
+    window.profile_list.set_profiles(profiles)
+    window.profile_list.select_profiles(["p0", "p1"])
+    window.tabs.setCurrentIndex(window.profiles_tab_index)
+    window.window.show()
+    qapp.processEvents()
+    table = window.profile_list.table
+    row = next(
+        row for row in range(table.rowCount())
+        if table.item(row, 0).data(window.profile_list.PROFILE_ID_ROLE) == "p2"
+    )
+
+    def dismiss(menu, _position):
+        assert window.profile_list.selected_profile_ids() == ["p2"]
+        assert "Delete" in [action.text() for action in menu.actions()]
+        return None
+
+    class Menu(window.QtWidgets.QMenu):
+        def exec(self, position):
+            return dismiss(self, position)
+
+    monkeypatch.setattr(window.QtWidgets, "QMenu", Menu)
+    window._show_profile_context_menu(table.visualItemRect(table.item(row, 0)).center())
+
+
 def test_delete_running_session_only_profile_restores_stock(win) -> None:
     # Session-only applies (Apply-on-startup unticked) leave no boot entry, so
     # deleting the actively running profile must still restore stock instead
