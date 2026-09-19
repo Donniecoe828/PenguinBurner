@@ -4,8 +4,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-_NVIDIA_VENDOR_ID = "0x10de"
-
 _VENDOR_NAMES = {
     "0x1002": "AMD",
     "0x10de": "NVIDIA",
