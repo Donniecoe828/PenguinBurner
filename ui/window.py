@@ -8,6 +8,9 @@ from cli.runtime_config_file import (
     silent_fan_curve_to_runtime_config,
 )
 from common.penguin_burner_paths import default_user_config_dir
+from drivers.hardware_identity import detect_cpu_identity
+from drivers.hardware_identity import discover_drm_gpu_identities
+from drivers.hardware_identity import has_nvidia_device_nodes
 
 from ui.features.integrations.afterburner_workflow import AfterburnerImportWorkflow
 from ui.assets import asset_image_path
@@ -310,8 +313,20 @@ class MainWindow(ProfileActionsMixin):
         scan failure after a pointless root-service install. The deeper
         architecture/driver validation still runs at scan start.
         """
-        if Path("/dev/nvidia0").exists() or Path("/dev/nvidiactl").exists():
+        if has_nvidia_device_nodes():
             return
+        amd_gpus = [
+            gpu for gpu in discover_drm_gpu_identities() if gpu.vendor_name.casefold() == "amd"
+        ]
+        cpu = detect_cpu_identity()
+        details = []
+        if amd_gpus:
+            details.append(
+                "Detected AMD GPU(s): "
+                + ", ".join(f"{gpu.card} ({gpu.device_id or 'unknown device'})" for gpu in amd_gpus)
+            )
+        if cpu and cpu.vendor_name.casefold() == "amd":
+            details.append(f"Detected AMD CPU: {cpu.model_name or cpu.vendor_id}")
         self.QtWidgets.QMessageBox.warning(
             self.window,
             "No NVIDIA GPU detected",
@@ -319,7 +334,8 @@ class MainWindow(ProfileActionsMixin):
             "system (no NVIDIA kernel driver is loaded).\n\n"
             "Make sure a supported NVIDIA card and the proprietary driver are "
             "installed, then restart PenguinBurner. Undervolt scans and profile "
-            "applies will not work until then.",
+            "applies will not work until then."
+            + (f"\n\n{'\n'.join(details)}" if details else ""),
         )
 
     def _check_daemon_upgrade_on_startup(self) -> None:
