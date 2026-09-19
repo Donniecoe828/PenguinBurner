@@ -507,17 +507,52 @@ def test_startup_gpu_check_warns_when_no_nvidia_device(main_window, monkeypatch)
         lambda *args, **kwargs: warnings.append(args),
     )
     # No NVIDIA device nodes present.
-    monkeypatch.setattr(window_mod.Path, "exists", lambda self: False)
+    monkeypatch.setattr(window_mod, "has_nvidia_device_nodes", lambda: False)
+    monkeypatch.setattr(window_mod, "discover_drm_gpu_identities", lambda: [])
+    monkeypatch.setattr(window_mod, "detect_cpu_identity", lambda: None)
     win._check_gpu_supported_on_startup()
     assert warnings and "NVIDIA" in warnings[0][2]
 
     warnings.clear()
     # Device present -> no warning.
-    monkeypatch.setattr(
-        window_mod.Path, "exists", lambda self: str(self) == "/dev/nvidia0"
-    )
+    monkeypatch.setattr(window_mod, "has_nvidia_device_nodes", lambda: True)
     win._check_gpu_supported_on_startup()
     assert warnings == []
+
+
+def test_startup_gpu_check_includes_detected_amd_hardware(
+    main_window, monkeypatch
+) -> None:
+    win = main_window
+    import ui.window as window_mod  # noqa: F811
+    from drivers.hardware_identity import CpuIdentity
+    from drivers.hardware_identity import DrmGpuIdentity
+
+    warnings = []
+    monkeypatch.setattr(
+        win.QtWidgets.QMessageBox,
+        "warning",
+        lambda *args, **kwargs: warnings.append(args),
+    )
+    monkeypatch.setattr(window_mod, "has_nvidia_device_nodes", lambda: False)
+    monkeypatch.setattr(
+        window_mod,
+        "discover_drm_gpu_identities",
+        lambda: [DrmGpuIdentity(card="card0", vendor_id="0x1002", vendor_name="AMD")],
+    )
+    monkeypatch.setattr(
+        window_mod,
+        "detect_cpu_identity",
+        lambda: CpuIdentity(
+            vendor_id="AuthenticAMD",
+            vendor_name="AMD",
+            model_name="AMD Ryzen 7 7800X3D",
+        ),
+    )
+    win._check_gpu_supported_on_startup()
+    assert warnings
+    assert "Detected AMD GPU(s): card0 (unknown device)" in warnings[0][2]
+    assert "Detected AMD CPU: AMD Ryzen 7 7800X3D" in warnings[0][2]
 
 
 def test_startup_daemon_check_only_prompts_for_incompatible_running_daemon(

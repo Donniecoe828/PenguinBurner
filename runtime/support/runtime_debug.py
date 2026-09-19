@@ -9,6 +9,8 @@ import time
 import traceback
 from pathlib import Path
 
+from drivers.hardware_identity import detect_cpu_identity
+from drivers.hardware_identity import discover_drm_gpu_identities
 from drivers.nvidia.daemon_gpu import DaemonGpuClient
 
 DEBUG_LOG_ENABLED = False
@@ -250,6 +252,24 @@ def _debug_log_runtime_environment():
         f"user={pwd.getpwuid(os.getuid()).pw_name} uid={os.getuid()} "
         f"euid={os.geteuid()} sudo-user={os.environ.get('SUDO_USER', '').strip() or '(none)'}"
     )
+    cpu = detect_cpu_identity()
+    if cpu is not None:
+        debug_log(
+            "cpu="
+            f"vendor={cpu.vendor_name} "
+            f"vendor_id={cpu.vendor_id or '(unknown)'} "
+            f"model={cpu.model_name or '(unknown)'}"
+        )
+    drm_gpus = discover_drm_gpu_identities()
+    debug_log(f"drm-gpu-query count={len(drm_gpus)}")
+    for gpu in drm_gpus:
+        debug_log(
+            "drm-gpu="
+            f"card={gpu.card} "
+            f"vendor={gpu.vendor_name} "
+            f"vendor_id={gpu.vendor_id} "
+            f"device_id={gpu.device_id or '(unknown)'}"
+        )
 
     try:
         identities = DaemonGpuClient.discover_identities()
